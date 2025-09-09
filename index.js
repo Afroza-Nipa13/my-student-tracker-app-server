@@ -39,8 +39,8 @@ async function run() {
     const db = client.db("studentTracker");
     const usersCollection = db.collection("usersCollection");
     const classesCollection=db.collection("classesCollection")
-
-
+    const budgetCollection=db.collection("budgetCollection")
+    const questionsCollection=db.collection("questionsCollection")
      const verifyToken = async (req, res, next) => {
       const token = req.cookies?.token
 
@@ -155,6 +155,154 @@ app.delete('/classes/:id', async (req, res) => {
     res.send(result);
   } catch (error) {
     res.status(500).send({ error: error.message });
+  }
+});
+
+// Exam Q&A Generator Routes
+
+// Get questions based on criteria
+app.get('/api/questions', async (req, res) => {
+  try {
+    const { subject, topic, difficulty, type, limit } = req.query;
+    
+    let query = {};
+    if (subject) query.subject = subject;
+    if (topic) query.topic = topic;
+    if (difficulty) query.difficulty = difficulty;
+    if (type) query.type = type;
+    
+    const questions = await questionsCollection
+      .find(query)
+      .limit(parseInt(limit) || 10)
+      .toArray();
+    
+    res.json(questions);
+  } catch (error) {
+    console.error('Error fetching questions:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Add a new question
+app.post('/api/questions', verifyToken, async (req, res) => {
+  try {
+    const questionData = req.body;
+    
+    // Validate required fields
+    if (!questionData.question || !questionData.answer || !questionData.subject || !questionData.topic) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const result = await questionsCollection.insertOne(questionData);
+    res.json({ insertedId: result.insertedId });
+  } catch (error) {
+    console.error('Error adding question:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get user's question submission history
+app.get('/api/user-questions', verifyToken, async (req, res) => {
+  try {
+    const questions = await questionsCollection
+      .find({ userId: req.user.id })
+      .sort({ createdAt: -1 })
+      .toArray();
+    
+    res.json(questions);
+  } catch (error) {
+    console.error('Error fetching user questions:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Budget routes
+app.get('/budget/transactions', verifyToken, async (req, res) => {
+  try {
+    const email = req.query.email;
+    
+    // Verify that user is accessing their own data
+    if (email !== req.user.email) {
+      return res.status(403).send({ error: 'Forbidden: You can only access your own transactions' });
+    }
+    
+    const transactions = await budgetCollection.find({ userEmail: email }).sort({ date: -1 }).toArray();
+    res.send(transactions);
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+
+app.post('/budget/transactions', verifyToken, async (req, res) => {
+  try {
+    const transactionData = req.body;
+    
+    // Verify that user is adding to their own account
+    if (transactionData.userEmail !== req.user.email) {
+      return res.status(403).send({ error: 'Forbidden: You can only add transactions to your own account' });
+    }
+    
+    const result = await budgetCollection.insertOne(transactionData);
+    res.send(result);
+  } catch (error) {
+    console.error('Error adding transaction:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/budget/transactions/:id', verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    
+    // First check if the transaction belongs to the user
+    const existingTransaction = await budgetCollection.findOne({ 
+      _id: new ObjectId(id) 
+    });
+    
+    if (!existingTransaction) {
+      return res.status(404).send({ error: 'Transaction not found' });
+    }
+    
+    if (existingTransaction.userEmail !== req.user.email) {
+      return res.status(403).send({ error: 'Forbidden: You can only delete your own transactions' });
+    }
+    
+    const result = await budgetCollection.deleteOne({ 
+      _id: new ObjectId(id) 
+    });
+    
+    if (result.deletedCount === 0) {
+      return res.status(404).send({ error: 'Transaction not found' });
+    }
+    
+    res.send(result);
+  } catch (error) {
+    console.error('Error deleting transaction:', error);
+    
+    // Handle invalid ObjectId format
+    if (error.message.includes('Hex string')) {
+      return res.status(400).send({ error: 'Invalid transaction ID format' });
+    }
+    
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/budget/transactions', verifyToken, async (req, res) => {
+  try {
+    const email = req.query.email;
+    
+    // Verify that user is deleting their own data
+    if (email !== req.user.email) {
+      return res.status(403).send({ error: 'Forbidden: You can only delete your own transactions' });
+    }
+    
+    const result = await budgetCollection.deleteMany({ userEmail: email });
+    res.send(result);
+  } catch (error) {
+    console.error('Error resetting budget:', error);
+    res.status(500).send({ error: 'Internal server error' });
   }
 });
 
