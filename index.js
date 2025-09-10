@@ -13,7 +13,7 @@ const port = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:5173'], 
+  origin: ['http://localhost:5173','https://clinquant-tulumba-811686.netlify.app'], 
   credentials: true 
 }));
 app.use(express.json());
@@ -93,18 +93,18 @@ async function run() {
         res.status(500).send(err)
       }
     })
-    // Sample route
+    
     app.get("/", (req, res) => {
       res.send("API is running...");
     });
 
-    // Example: Get all users
+    //  Get all users
     app.get("/users", async (req, res) => {
       const users = await usersCollection.find().toArray();
       res.send(users);
     });
 
-    // Example: Add user
+    //  Add user
     app.post("/users", async (req, res) => {
       const newUser = req.body;
       const result = await usersCollection.insertOne(newUser);
@@ -112,8 +112,90 @@ async function run() {
     });
 
 
+// PATCH /users/:email - Update user profile
+app.patch("/users/:email", verifyToken, async (req, res) => {
+  try {
+    const userEmail = req.params.email;
+    console.log("user email from patch api", userEmail)
+    const { displayName, phone, address, photoURL } = req.body;
+
+    if (!userEmail) {
+      return res.status(400).json({ success: false, message: "User email is required" });
+    }
+
+    // MongoDB update
+    const result = await usersCollection.findOneAndUpdate(
+      { email: userEmail },
+      { $set: { displayName, phone, address, photoURL } },
+      { returnDocument: "after" } 
+    );
+
+    if (!result.value) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      data: result.value
+    });
+
+  } catch (error) {
+    console.error("Error updating profile:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+// app.get('/api/profile', verifyToken, async (req, res) => {
+//   try {
+//     const userId = req.user.id; // JWT token থেকে পাওয়া
+//     const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+
+//     if (!user) return res.status(404).json({ error: 'User not found' });
+
+//     res.json({
+//       name: user.name,
+//       email: user.email,
+//       phone: user.phone || '',
+//       bio: user.bio || ''
+//     });
+//   } catch (error) {
+//     console.error('Error fetching profile:', error);
+//     res.status(500).json({ error: 'Internal server error' });
+//   }
+// });
+
+
+
+// app.put('/api/profile', verifyToken, async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const { name, phone, bio } = req.body;
+
+//     const result = await usersCollection.findOneAndUpdate(
+//       { _id: new ObjectId(userId) },
+//       { $set: { name, phone, bio } },
+//       { returnDocument: 'after' }
+//     );
+
+//     if (!result.value) return res.status(404).json({ error: 'User not found' });
+
+//     res.json({
+//       name: result.value.name,
+//       email: result.value.email,
+//       phone: result.value.phone,
+//       bio: result.value.bio
+//     });
+//   } catch (error) {
+//     console.error('Error updating profile:', error);
+//     res.status(500).json({ error: 'Internal server error' });
+//   }
+// });
+
+
+
     // Get classes for a specific user
-app.get('/classes', async (req, res) => {
+app.get('/classes',verifyToken, async (req, res) => {
   try {
     const email = req.query.email;
     const classes = await classesCollection.find({ userEmail: email }).toArray();
@@ -124,7 +206,7 @@ app.get('/classes', async (req, res) => {
 });
 
 // Add a new class
-app.post('/classes', async (req, res) => {
+app.post('/classes',verifyToken, async (req, res) => {
   try {
     const classData = req.body;
     const result = await classesCollection.insertOne(classData);
@@ -135,7 +217,7 @@ app.post('/classes', async (req, res) => {
 });
 
 // Update a class
-app.put('/classes/:id', async (req, res) => {
+app.put('/classes/:id',verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
     const classData = req.body;
@@ -150,7 +232,7 @@ app.put('/classes/:id', async (req, res) => {
 });
 
 // Delete a class
-app.delete('/classes/:id', async (req, res) => {
+app.delete('/classes/:id',verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
     const result = await classesCollection.deleteOne({ _id: new ObjectId(id) });
@@ -203,7 +285,7 @@ app.post('/api/questions', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ GET - Get all study plans (filter by user)
+// GET - Get all study plans (filter by user)
 app.get('/study-plans', async (req, res) => {
   try {
     const email = req.query.email; // frontend থেকে ?email= দিয়ে পাঠাবে
@@ -215,7 +297,7 @@ app.get('/study-plans', async (req, res) => {
   }
 });
 
-// ✅ POST - Add new study plan
+//  POST - Add new study plan
 app.post('/study-plans', async (req, res) => {
   try {
     const newPlan = req.body;
@@ -228,7 +310,7 @@ app.post('/study-plans', async (req, res) => {
   }
 });
 
-// ✅ PATCH - Update a study plan (mark complete, edit info)
+//  PATCH - Update a study plan (mark complete, edit info)
 app.patch('/study-plans/:id', async (req, res) => {
   try {
     const id = req.params.id;
@@ -242,7 +324,7 @@ app.patch('/study-plans/:id', async (req, res) => {
   }
 });
 
-// ✅ DELETE - Remove a study plan
+//  DELETE - Remove a study plan
 app.delete('/study-plans/:id', async (req, res) => {
   try {
     const id = req.params.id;
