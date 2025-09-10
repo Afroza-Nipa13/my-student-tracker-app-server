@@ -146,6 +146,158 @@ app.patch("/users/:email", verifyToken, async (req, res) => {
   }
 });
 
+
+// Budget API Routes
+
+// Get all transactions for a specific user
+app.get('/budget/transactions', verifyToken, async (req, res) => {
+  try {
+    const email = req.query.email;
+    
+    // Verify that user is accessing their own data
+    if (email !== req.user.email) {
+      return res.status(403).send({ error: 'Forbidden: You can only access your own transactions' });
+    }
+    
+    const transactions = await budgetCollection.find({ userEmail: email }).sort({ date: -1, createdAt: -1 }).toArray();
+    res.send(transactions);
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+
+// Add a new transaction
+app.post('/budget/transactions', verifyToken, async (req, res) => {
+  try {
+    const transactionData = req.body;
+    
+    // Verify that user is adding to their own account
+    if (transactionData.userEmail !== req.user.email) {
+      return res.status(403).send({ error: 'Forbidden: You can only add transactions to your own account' });
+    }
+    
+    // Validate required fields
+    if (!transactionData.type || !transactionData.category || !transactionData.amount) {
+      return res.status(400).send({ error: 'Missing required fields: type, category, or amount' });
+    }
+    
+    // Ensure amount is a number
+    transactionData.amount = parseFloat(transactionData.amount);
+    if (isNaN(transactionData.amount) || transactionData.amount <= 0) {
+      return res.status(400).send({ error: 'Amount must be a positive number' });
+    }
+    
+    const result = await budgetCollection.insertOne(transactionData);
+    res.send(result);
+  } catch (error) {
+    console.error('Error adding transaction:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+
+// Delete a specific transaction
+app.delete('/budget/transactions/:id', verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    
+    // First check if the transaction belongs to the user
+    const existingTransaction = await budgetCollection.findOne({ 
+      _id: new ObjectId(id) 
+    });
+    
+    if (!existingTransaction) {
+      return res.status(404).send({ error: 'Transaction not found' });
+    }
+    
+    if (existingTransaction.userEmail !== req.user.email) {
+      return res.status(403).send({ error: 'Forbidden: You can only delete your own transactions' });
+    }
+    
+    const result = await budgetCollection.deleteOne({ 
+      _id: new ObjectId(id) 
+    });
+    
+    if (result.deletedCount === 0) {
+      return res.status(404).send({ error: 'Transaction not found' });
+    }
+    
+    res.send(result);
+  } catch (error) {
+    console.error('Error deleting transaction:', error);
+    
+    // Handle invalid ObjectId format
+    if (error.message.includes('Hex string')) {
+      return res.status(400).send({ error: 'Invalid transaction ID format' });
+    }
+    
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+
+// Delete all transactions for a user
+app.delete('/budget/transactions', verifyToken, async (req, res) => {
+  try {
+    const email = req.query.email;
+    
+    // Verify that user is deleting their own data
+    if (email !== req.user.email) {
+      return res.status(403).send({ error: 'Forbidden: You can only delete your own transactions' });
+    }
+    
+    const result = await budgetCollection.deleteMany({ userEmail: email });
+    res.send(result);
+  } catch (error) {
+    console.error('Error resetting budget:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+
+// Get budget summary (totals) for a user
+app.get('/budget/summary', verifyToken, async (req, res) => {
+  try {
+    const email = req.query.email;
+    
+    // Verify that user is accessing their own data
+    if (email !== req.user.email) {
+      return res.status(403).send({ error: 'Forbidden: You can only access your own data' });
+    }
+    
+    const transactions = await budgetCollection.find({ userEmail: email }).toArray();
+    
+    const incomeTotal = transactions
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    
+    const expensesTotal = transactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    
+    const savingsTotal = incomeTotal - expensesTotal;
+    
+    // Calculate expenses by category
+    const expenseCategories = transactions
+      .filter(t => t.type === 'expense')
+      .reduce((acc, t) => {
+        if (!acc[t.category]) acc[t.category] = 0;
+        acc[t.category] += parseFloat(t.amount);
+        return acc;
+      }, {});
+    
+    res.send({
+      incomeTotal,
+      expensesTotal,
+      savingsTotal,
+      expenseCategories,
+      transactionCount: transactions.length
+    });
+  } catch (error) {
+    console.error('Error fetching budget summary:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+
+
 // app.get('/api/profile', verifyToken, async (req, res) => {
 //   try {
 //     const userId = req.user.id; // JWT token থেকে পাওয়া
@@ -204,6 +356,7 @@ app.get('/classes',verifyToken, async (req, res) => {
     res.status(500).send({ error: error.message });
   }
 });
+
 
 // Add a new class
 app.post('/classes',verifyToken, async (req, res) => {
