@@ -41,7 +41,9 @@ async function run() {
     const classesCollection=db.collection("classesCollection")
     const budgetCollection=db.collection("budgetCollection")
     const questionsCollection=db.collection("questionsCollection")
-     const verifyToken = async (req, res, next) => {
+    const studyPlansCollection=db.collection("studyPlansCollection")
+     
+    const verifyToken = async (req, res, next) => {
       const token = req.cookies?.token
 
       if (!token) {
@@ -201,6 +203,57 @@ app.post('/api/questions', verifyToken, async (req, res) => {
   }
 });
 
+// ✅ GET - Get all study plans (filter by user)
+app.get('/study-plans', async (req, res) => {
+  try {
+    const email = req.query.email; // frontend থেকে ?email= দিয়ে পাঠাবে
+    const query = email ? { userEmail: email } : {};
+    const plans = await studyPlansCollection.find(query).toArray();
+    res.send(plans);
+  } catch (error) {
+    res.status(500).send({ error: 'Failed to fetch study plans' });
+  }
+});
+
+// ✅ POST - Add new study plan
+app.post('/study-plans', async (req, res) => {
+  try {
+    const newPlan = req.body;
+    newPlan.createdAt = new Date();
+    newPlan.status = 'pending';
+    const result = await studyPlansCollection.insertOne(newPlan);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: 'Failed to add study plan' });
+  }
+});
+
+// ✅ PATCH - Update a study plan (mark complete, edit info)
+app.patch('/study-plans/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const updatedData = req.body;
+    const filter = { _id: new ObjectId(id) };
+    const updateDoc = { $set: updatedData };
+    const result = await studyPlansCollection.updateOne(filter, updateDoc);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: 'Failed to update study plan' });
+  }
+});
+
+// ✅ DELETE - Remove a study plan
+app.delete('/study-plans/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const filter = { _id: new ObjectId(id) };
+    const result = await studyPlansCollection.deleteOne(filter);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: 'Failed to delete study plan' });
+  }
+
+
 // Get user's question submission history
 app.get('/api/user-questions', verifyToken, async (req, res) => {
   try {
@@ -305,7 +358,7 @@ app.delete('/budget/transactions', verifyToken, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
-
+})
   } finally {
     // Optional: close connection when needed
     // await client.close();
